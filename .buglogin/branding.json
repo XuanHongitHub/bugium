@@ -1,0 +1,6 @@
+{
+  "product_name": "Bugium",
+  "display_name": "Bugium Browser",
+  "vendor": "BugLogin",
+  "engine": "chromium"
+}

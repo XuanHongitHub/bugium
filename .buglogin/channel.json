@@ -1,0 +1,6 @@
+{
+  "browser": "bugium",
+  "engine": "chromium",
+  "channel": "stable",
+  "manifest_schema": "v1"
+}

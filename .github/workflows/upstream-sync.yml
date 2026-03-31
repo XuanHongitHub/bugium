@@ -1,0 +1,36 @@
+name: Upstream Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "31 2 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync with upstream master
+        run: |
+          git remote add upstream https://github.com/ungoogled-software/ungoogled-chromium.git || true
+          git fetch upstream
+          git checkout master
+          git merge --no-edit upstream/master || {
+            echo "Merge conflict detected. Manual resolution required.";
+            exit 1;
+          }
+
+      - name: Push
+        run: git push origin master

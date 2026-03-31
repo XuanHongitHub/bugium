@@ -183,3 +183,17 @@ List of known projects that fork or use changes from ungoogled-chromium:
 ## License
 
 BSD-3-clause. See [LICENSE](LICENSE)
+
+---
+
+## BugLogin Distribution Layer
+
+This fork is branded and distributed as **Bugium** for BugLogin.
+
+### Automation workflows
+- `Upstream Sync`: merges latest `ungoogled-software/ungoogled-chromium` into `master` on schedule.
+- `Release Manifest & API Publish`: generates `release-manifest.json` and optionally pushes to BugLogin release API.
+
+### Required repository secrets
+- `BUGLOGIN_RELEASE_API_URL`
+- `BUGLOGIN_RELEASE_API_TOKEN`
