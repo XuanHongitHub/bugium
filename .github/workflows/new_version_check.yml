@@ -31,7 +31,7 @@ jobs:
             printf %s "${platform}_version=" >> $GITHUB_OUTPUT
             curl -sf "${BASE_URL}/${platform}/${END_URL}" | jq -re "${JQ_FILTER}" >> $GITHUB_OUTPUT
           done
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
       - name: Create Issue for all platforms
         if: |
           contains(steps.latest-version.outputs.win_version, steps.latest-version.outputs.mac_version) &&
