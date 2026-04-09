@@ -1,4 +1,4 @@
-name: Upstream Release Sync
+name: Upstream Release Sync (All OS)
 
 on:
   workflow_dispatch:
@@ -14,16 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      UPSTREAM_RELEASE_REPO: ungoogled-software/ungoogled-chromium-windows
+      UPSTREAM_WINDOWS_REPO: ungoogled-software/ungoogled-chromium-windows
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve latest upstream release
+      - name: Resolve latest upstream windows release
         id: latest
         run: |
-          TAG="$(gh api repos/${UPSTREAM_RELEASE_REPO}/releases/latest --jq '.tag_name')"
+          TAG="$(gh api repos/${UPSTREAM_WINDOWS_REPO}/releases/latest --jq '.tag_name')"
           if [[ -z "${TAG}" ]]; then
             echo "Failed to resolve latest upstream release tag." >&2
             exit 1
@@ -46,12 +46,9 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Trigger customize-release workflow
+      - name: Trigger build workflow
         if: steps.existing.outputs.exists == 'false'
         run: |
-          gh workflow run customize-release.yml \
+          gh workflow run build.yml \
             --ref "${GITHUB_REF_NAME}" \
-            -f upstream_tag="${{ steps.latest.outputs.tag }}" \
-            -f fork_tag="${{ steps.fork.outputs.tag }}"
-
-# buglogin: keep this workflow indexed
+            -f release_tag="${{ steps.fork.outputs.tag }}"
