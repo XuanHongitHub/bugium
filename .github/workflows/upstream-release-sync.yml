@@ -1,54 +1,18 @@
-name: Upstream Release Sync (All OS)
+name: Upstream Release Sync (Deprecated)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 */6 * * *"
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
-  sync-release:
+  blocked:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      UPSTREAM_WINDOWS_REPO: ungoogled-software/ungoogled-chromium-windows
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Resolve latest upstream windows release
-        id: latest
+      - name: Block automatic upstream sync
         run: |
-          TAG="$(gh api repos/${UPSTREAM_WINDOWS_REPO}/releases/latest --jq '.tag_name')"
-          if [[ -z "${TAG}" ]]; then
-            echo "Failed to resolve latest upstream release tag." >&2
-            exit 1
-          fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Compute fork tag
-        id: fork
-        run: |
-          echo "tag=${{ steps.latest.outputs.tag }}-buglogin.1" >> "$GITHUB_OUTPUT"
-
-      - name: Skip when fork release already exists
-        id: existing
-        run: |
-          TAG="${{ steps.fork.outputs.tag }}"
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Fork release ${TAG} already exists."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Trigger build workflow
-        if: steps.existing.outputs.exists == 'false'
-        run: |
-          gh workflow run build.yml \
-            --ref "${GITHUB_REF_NAME}" \
-            -f release_tag="${{ steps.fork.outputs.tag }}"
+          echo "Automatic upstream release sync is disabled for Bugium."
+          echo "Reason: Bugium now expects source-built, Bugium-branded artifacts."
+          echo "Use build.yml and point windows/linux/macos source repos to your custom forks."
+          exit 1

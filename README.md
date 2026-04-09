@@ -192,8 +192,13 @@ This fork is branded and distributed as **Bugium** for BugLogin.
 
 ### Automation workflows
 - `Upstream Sync`: merges latest `ungoogled-software/ungoogled-chromium` into `master` on schedule.
-- `Build and Release (All OS)`: fetches upstream Windows/Linux/macOS release assets, repackages for Bugium naming, and publishes a GitHub release.
+- `Publish Bugium Release (Source Artifacts)` (`build.yml`): collects release artifacts from source-build repositories (Windows/Linux/macOS), publishes them in this repo, and records source provenance metadata.
+- `Upstream Release Sync (Deprecated)`: intentionally blocked to avoid auto-publishing non-branded upstream binaries.
 - `Release Manifest & API Publish`: resolves release assets, uploads artifacts/manifests to S3, and updates browser release state.
+
+### Required release policy
+- Do not publish repacked upstream Chromium binaries.
+- Use source-build repositories that include Bugium branding/customization (logo/icon/title/first-run behavior) before publishing via `build.yml`.
 
 ### Required repository secrets
 - `S3_ACCESS_KEY_ID`

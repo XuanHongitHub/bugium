@@ -1,20 +1,36 @@
-name: Build and Release (All OS)
+name: Publish Bugium Release (Source Artifacts)
 
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Fork release tag to publish (e.g. 146.0.7680.177-1.2-buglogin.1)"
+        description: "Bugium release tag to publish in this repo (e.g. 146.0.7680.177-1.2-buglogin.1)"
         required: true
-      windows_tag:
-        description: "Optional upstream windows release tag override"
+      windows_source_repo:
+        description: "GitHub repo containing Windows source-build releases"
         required: false
-      linux_tag:
-        description: "Optional upstream linux release tag override"
+        default: "ungoogled-software/ungoogled-chromium-windows"
+      linux_source_repo:
+        description: "GitHub repo containing Linux source-build releases"
         required: false
-      macos_tag:
-        description: "Optional upstream macos release tag override"
+        default: "ungoogled-software/ungoogled-chromium-portablelinux"
+      macos_source_repo:
+        description: "GitHub repo containing macOS source-build releases"
         required: false
+        default: "ungoogled-software/ungoogled-chromium-macos"
+      windows_source_tag:
+        description: "Optional source release tag override for Windows"
+        required: false
+      linux_source_tag:
+        description: "Optional source release tag override for Linux"
+        required: false
+      macos_source_tag:
+        description: "Optional source release tag override for macOS"
+        required: false
+      require_bugium_named_assets:
+        description: "Fail when downloaded asset names do not contain 'bugium'"
+        required: false
+        default: "true"
   push:
     tags:
       - "*"
@@ -23,101 +39,109 @@ permissions:
   contents: write
 
 concurrency:
-  group: bugium-build-${{ github.ref }}
+  group: bugium-publish-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-release:
+  publish:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      WINDOWS_REPO: ungoogled-software/ungoogled-chromium-windows
-      LINUX_REPO: ungoogled-software/ungoogled-chromium-portablelinux
-      MACOS_REPO: ungoogled-software/ungoogled-chromium-macos
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve tags
-        id: tags
+      - name: Resolve release context
+        id: context
         env:
           INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag }}
-          INPUT_WINDOWS_TAG: ${{ github.event.inputs.windows_tag }}
-          INPUT_LINUX_TAG: ${{ github.event.inputs.linux_tag }}
-          INPUT_MACOS_TAG: ${{ github.event.inputs.macos_tag }}
+          INPUT_WINDOWS_REPO: ${{ github.event.inputs.windows_source_repo }}
+          INPUT_LINUX_REPO: ${{ github.event.inputs.linux_source_repo }}
+          INPUT_MACOS_REPO: ${{ github.event.inputs.macos_source_repo }}
+          INPUT_WINDOWS_TAG: ${{ github.event.inputs.windows_source_tag }}
+          INPUT_LINUX_TAG: ${{ github.event.inputs.linux_source_tag }}
+          INPUT_MACOS_TAG: ${{ github.event.inputs.macos_source_tag }}
+          INPUT_REQUIRE_BUGIUM: ${{ github.event.inputs.require_bugium_named_assets }}
         run: |
           python3 - <<'PY'
           import json
           import os
           import subprocess
-          import sys
 
-          def gh_json(path: str):
-            out = subprocess.check_output(["gh", "api", path], text=True)
-            return json.loads(out)
-
-          def latest_release_tag(repo: str):
-            rel = gh_json(f"repos/{repo}/releases/latest")
-            tag = (rel.get("tag_name") or "").strip()
+          def latest_release_tag(repo: str) -> str:
+            payload = json.loads(
+              subprocess.check_output(["gh", "api", f"repos/{repo}/releases/latest"], text=True)
+            )
+            tag = (payload.get("tag_name") or "").strip()
             if not tag:
-              raise SystemExit(f"No latest tag for {repo}")
+              raise SystemExit(f"No latest release tag found for {repo}")
             return tag
 
-          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
-          github_ref = os.environ.get("GITHUB_REF", "")
+          event_name = (os.environ.get("GITHUB_EVENT_NAME") or "").strip()
+          github_ref = (os.environ.get("GITHUB_REF") or "").strip()
 
           input_release = (os.environ.get("INPUT_RELEASE_TAG") or "").strip()
-          input_windows = (os.environ.get("INPUT_WINDOWS_TAG") or "").strip()
-          input_linux = (os.environ.get("INPUT_LINUX_TAG") or "").strip()
-          input_macos = (os.environ.get("INPUT_MACOS_TAG") or "").strip()
-
+          release_tag = input_release
           if event_name == "push" and github_ref.startswith("refs/tags/"):
-            fork_tag = github_ref.split("refs/tags/", 1)[1].strip()
-          else:
-            fork_tag = input_release
+            release_tag = github_ref.split("refs/tags/", 1)[1].strip()
 
-          if not fork_tag:
+          if not release_tag:
             raise SystemExit("release_tag is required")
 
-          windows_tag = input_windows or latest_release_tag(os.environ["WINDOWS_REPO"])
-          linux_tag = input_linux or latest_release_tag(os.environ["LINUX_REPO"])
-          macos_tag = input_macos or latest_release_tag(os.environ["MACOS_REPO"])
+          windows_repo = (os.environ.get("INPUT_WINDOWS_REPO") or "ungoogled-software/ungoogled-chromium-windows").strip()
+          linux_repo = (os.environ.get("INPUT_LINUX_REPO") or "ungoogled-software/ungoogled-chromium-portablelinux").strip()
+          macos_repo = (os.environ.get("INPUT_MACOS_REPO") or "ungoogled-software/ungoogled-chromium-macos").strip()
+
+          windows_tag = (os.environ.get("INPUT_WINDOWS_TAG") or "").strip() or latest_release_tag(windows_repo)
+          linux_tag = (os.environ.get("INPUT_LINUX_TAG") or "").strip() or latest_release_tag(linux_repo)
+          macos_tag = (os.environ.get("INPUT_MACOS_TAG") or "").strip() or latest_release_tag(macos_repo)
+
+          require_bugium = (os.environ.get("INPUT_REQUIRE_BUGIUM") or "true").strip().lower() in {"1", "true", "yes"}
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-            fh.write(f"fork_tag={fork_tag}\n")
+            fh.write(f"release_tag={release_tag}\n")
+            fh.write(f"windows_repo={windows_repo}\n")
+            fh.write(f"linux_repo={linux_repo}\n")
+            fh.write(f"macos_repo={macos_repo}\n")
             fh.write(f"windows_tag={windows_tag}\n")
             fh.write(f"linux_tag={linux_tag}\n")
             fh.write(f"macos_tag={macos_tag}\n")
+            fh.write(f"require_bugium={'true' if require_bugium else 'false'}\n")
 
-          print(f"fork_tag={fork_tag}")
-          print(f"windows_tag={windows_tag}")
-          print(f"linux_tag={linux_tag}")
-          print(f"macos_tag={macos_tag}")
+          print("Resolved release context:")
+          print(f"  release_tag={release_tag}")
+          print(f"  windows={windows_repo}@{windows_tag}")
+          print(f"  linux={linux_repo}@{linux_tag}")
+          print(f"  macos={macos_repo}@{macos_tag}")
+          print(f"  require_bugium_named_assets={require_bugium}")
           PY
 
-      - name: Download upstream assets
+      - name: Download source-build assets
         run: |
-          mkdir -p upstream-assets/windows upstream-assets/linux upstream-assets/macos dist
+          mkdir -p source-assets/windows source-assets/linux source-assets/macos dist
 
-          gh release download "${{ steps.tags.outputs.windows_tag }}" \
-            --repo "${WINDOWS_REPO}" \
-            --dir upstream-assets/windows
+          gh release download "${{ steps.context.outputs.windows_tag }}" \
+            --repo "${{ steps.context.outputs.windows_repo }}" \
+            --dir source-assets/windows
 
-          gh release download "${{ steps.tags.outputs.linux_tag }}" \
-            --repo "${LINUX_REPO}" \
-            --dir upstream-assets/linux
+          gh release download "${{ steps.context.outputs.linux_tag }}" \
+            --repo "${{ steps.context.outputs.linux_repo }}" \
+            --dir source-assets/linux
 
-          gh release download "${{ steps.tags.outputs.macos_tag }}" \
-            --repo "${MACOS_REPO}" \
-            --dir upstream-assets/macos
+          gh release download "${{ steps.context.outputs.macos_tag }}" \
+            --repo "${{ steps.context.outputs.macos_repo }}" \
+            --dir source-assets/macos
 
-      - name: Repackage and rename as Bugium
+      - name: Collect assets without binary repack
         env:
-          FORK_TAG: ${{ steps.tags.outputs.fork_tag }}
-          WINDOWS_TAG: ${{ steps.tags.outputs.windows_tag }}
-          LINUX_TAG: ${{ steps.tags.outputs.linux_tag }}
-          MACOS_TAG: ${{ steps.tags.outputs.macos_tag }}
+          REQUIRE_BUGIUM: ${{ steps.context.outputs.require_bugium }}
+          WINDOWS_REPO: ${{ steps.context.outputs.windows_repo }}
+          LINUX_REPO: ${{ steps.context.outputs.linux_repo }}
+          MACOS_REPO: ${{ steps.context.outputs.macos_repo }}
+          WINDOWS_TAG: ${{ steps.context.outputs.windows_tag }}
+          LINUX_TAG: ${{ steps.context.outputs.linux_tag }}
+          MACOS_TAG: ${{ steps.context.outputs.macos_tag }}
         run: |
           python3 - <<'PY'
           import hashlib
@@ -126,124 +150,105 @@ jobs:
           import pathlib
           import re
           import shutil
-          import zipfile
 
-          src_root = pathlib.Path("upstream-assets")
+          src_root = pathlib.Path("source-assets")
           out_dir = pathlib.Path("dist")
           out_dir.mkdir(parents=True, exist_ok=True)
 
-          fork_tag = os.environ["FORK_TAG"]
-          marker = {
-            "browser": "bugium",
-            "fork_tag": fork_tag,
-            "upstream": {
-              "windows": os.environ.get("WINDOWS_TAG"),
-              "linux": os.environ.get("LINUX_TAG"),
-              "macos": os.environ.get("MACOS_TAG"),
-            },
-            "packaging": "buglogin-fork-release",
-          }
+          allow_suffixes = (
+            ".zip",
+            ".tar.gz",
+            ".tar.xz",
+            ".dmg",
+            ".appimage",
+            ".exe",
+            ".msi",
+            ".sha256",
+            ".sha256sum",
+            ".txt",
+          )
 
-          def rename_text(name: str) -> str:
-            return (
-              name.replace("ungoogled-chromium", "bugium")
-              .replace("Ungoogled-Chromium", "Bugium")
-              .replace("Chromium", "Bugium")
-              .replace("chromium", "bugium")
-            )
-
-          def include_asset(path: pathlib.Path) -> bool:
-            name = path.name.lower()
-            if name.endswith((".zip", ".tar.gz", ".tar.xz", ".dmg", ".AppImage".lower())):
-              return True
-            return False
-
-          def platform_of(path: pathlib.Path) -> str:
-            p = str(path).lower()
-            if "/windows/" in p:
-              return "windows"
-            if "/linux/" in p:
-              return "linux"
-            if "/macos/" in p:
-              return "macos"
-            return "unknown"
-
-          def normalize_zip_member_name(name: str) -> str:
-            return rename_text(name)
-
-          def write_checksum_line(file_path: pathlib.Path):
-            digest = hashlib.sha256(file_path.read_bytes()).hexdigest()
-            return f"{digest}  {file_path.name}"
-
-          outputs = []
+          require_bugium = (os.environ.get("REQUIRE_BUGIUM") or "true").strip().lower() in {"1", "true", "yes"}
+          produced = []
+          has_bugium_named = False
 
           for asset in sorted(src_root.rglob("*")):
-            if not asset.is_file() or not include_asset(asset):
+            if not asset.is_file():
+              continue
+            lower = asset.name.lower()
+            if not lower.endswith(allow_suffixes):
               continue
 
-            plat = platform_of(asset)
-            out_name = rename_text(asset.name)
+            platform = "unknown"
+            p = str(asset).lower()
+            if "/windows/" in p:
+              platform = "windows"
+            elif "/linux/" in p:
+              platform = "linux"
+            elif "/macos/" in p:
+              platform = "macos"
 
-            # normalize platform token for manifest detection
-            if plat == "windows":
-              out_name = re.sub(r"(win|windows)", "windows", out_name, flags=re.IGNORECASE)
-            elif plat == "linux":
-              out_name = re.sub(r"(lin|linux)", "linux", out_name, flags=re.IGNORECASE)
-            elif plat == "macos":
-              out_name = re.sub(r"(mac|darwin|osx)", "macos", out_name, flags=re.IGNORECASE)
-
+            out_name = f"{platform}-{asset.name}"
             out_path = out_dir / out_name
+            shutil.copy2(asset, out_path)
+            produced.append(out_path)
 
-            if asset.suffix.lower() == ".zip":
-              with zipfile.ZipFile(asset, "r") as zin, zipfile.ZipFile(
-                out_path, "w", compression=zipfile.ZIP_DEFLATED
-              ) as zout:
-                seen = set()
-                roots = set()
-                for info in zin.infolist():
-                  if info.is_dir():
-                    continue
-                  n = normalize_zip_member_name(info.filename)
-                  roots.add(n.split("/", 1)[0])
-                  data = zin.read(info)
-                  zout.writestr(n, data)
-                  seen.add(n)
+            if "bugium" in lower:
+              has_bugium_named = True
 
-                  lower = n.lower()
-                  if plat == "windows" and (lower.endswith("/chrome.exe") or lower.endswith("/chromium.exe")):
-                    alias = n.rsplit("/", 1)[0] + "/bugium.exe"
-                    if alias not in seen:
-                      zout.writestr(alias, data)
-                      seen.add(alias)
+          if not produced:
+            raise SystemExit("No release assets found to publish.")
 
-                for root in sorted(roots):
-                  meta = f"{root}/BUGLOGIN_FORK_METADATA.json"
-                  if meta not in seen:
-                    zout.writestr(meta, json.dumps(marker, ensure_ascii=False, indent=2) + "\n")
-            else:
-              shutil.copy2(asset, out_path)
+          if require_bugium and not has_bugium_named:
+            raise SystemExit(
+              "No asset filename contains 'bugium'. Refusing to publish non-branded artifacts. "
+              "Set require_bugium_named_assets=false to bypass explicitly."
+            )
 
-            outputs.append(out_path)
+          metadata = {
+            "browser": "bugium",
+            "packaging": "source-build-artifact-collector",
+            "sources": {
+              "windows": {
+                "repo": os.environ.get("WINDOWS_REPO"),
+                "tag": os.environ.get("WINDOWS_TAG"),
+              },
+              "linux": {
+                "repo": os.environ.get("LINUX_REPO"),
+                "tag": os.environ.get("LINUX_TAG"),
+              },
+              "macos": {
+                "repo": os.environ.get("MACOS_REPO"),
+                "tag": os.environ.get("MACOS_TAG"),
+              },
+            },
+            "require_bugium_named_assets": require_bugium,
+          }
+          (out_dir / "bugium-source-release-metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+          )
 
-          if not outputs:
-            raise SystemExit("No assets produced.")
+          sums = []
+          for file_path in sorted(produced):
+            digest = hashlib.sha256(file_path.read_bytes()).hexdigest()
+            sums.append(f"{digest}  {file_path.name}")
 
-          sums = [write_checksum_line(path) for path in sorted(outputs)]
           (out_dir / "bugium-sha256sums.txt").write_text("\n".join(sums) + "\n", encoding="utf-8")
 
-          print("Produced assets:")
-          for item in sorted(outputs):
-            print(f"- {item.name}")
+          print("Published assets:")
+          for f in sorted(produced):
+            print(f"- {f.name}")
           PY
 
       - name: Publish GitHub release
         run: |
-          TAG="${{ steps.tags.outputs.fork_tag }}"
+          TAG="${{ steps.context.outputs.release_tag }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
             gh release create "$TAG" \
               --title "$TAG" \
-              --notes "BugLogin Bugium all-OS packaged release." \
+              --notes "Bugium release from source-build repositories." \
               dist/*
           fi
