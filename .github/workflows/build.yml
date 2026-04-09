@@ -9,15 +9,15 @@ on:
       windows_source_repo:
         description: "GitHub repo containing Windows source-build releases"
         required: false
-        default: "ungoogled-software/ungoogled-chromium-windows"
+        default: "XuanHongitHub/ungoogled-chromium-windows"
       linux_source_repo:
         description: "GitHub repo containing Linux source-build releases"
         required: false
-        default: "ungoogled-software/ungoogled-chromium-portablelinux"
+        default: "XuanHongitHub/ungoogled-chromium-portablelinux"
       macos_source_repo:
         description: "GitHub repo containing macOS source-build releases"
         required: false
-        default: "ungoogled-software/ungoogled-chromium-macos"
+        default: "XuanHongitHub/ungoogled-chromium-macos"
       windows_source_tag:
         description: "Optional source release tag override for Windows"
         required: false
@@ -89,9 +89,9 @@ jobs:
           if not release_tag:
             raise SystemExit("release_tag is required")
 
-          windows_repo = (os.environ.get("INPUT_WINDOWS_REPO") or "ungoogled-software/ungoogled-chromium-windows").strip()
-          linux_repo = (os.environ.get("INPUT_LINUX_REPO") or "ungoogled-software/ungoogled-chromium-portablelinux").strip()
-          macos_repo = (os.environ.get("INPUT_MACOS_REPO") or "ungoogled-software/ungoogled-chromium-macos").strip()
+          windows_repo = (os.environ.get("INPUT_WINDOWS_REPO") or "XuanHongitHub/ungoogled-chromium-windows").strip()
+          linux_repo = (os.environ.get("INPUT_LINUX_REPO") or "XuanHongitHub/ungoogled-chromium-portablelinux").strip()
+          macos_repo = (os.environ.get("INPUT_MACOS_REPO") or "XuanHongitHub/ungoogled-chromium-macos").strip()
 
           windows_tag = (os.environ.get("INPUT_WINDOWS_TAG") or "").strip() or latest_release_tag(windows_repo)
           linux_tag = (os.environ.get("INPUT_LINUX_TAG") or "").strip() or latest_release_tag(linux_repo)
