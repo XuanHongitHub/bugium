@@ -102,8 +102,6 @@ jobs:
           import json
           import os
           import pathlib
-          import shutil
-          import tempfile
           import zipfile
 
           upstream_tag = os.environ["UPSTREAM_TAG"]
@@ -119,31 +117,71 @@ jobs:
               .replace("Chromium", "Bugium")
             )
 
+          def normalize_member_name(name: str) -> str:
+            return (
+              name.replace("ungoogled-chromium", "bugium")
+              .replace("chromium", "bugium")
+              .replace("Chromium", "Bugium")
+            )
+
           marker = {
             "browser": "bugium",
             "upstream_tag": upstream_tag,
             "fork_tag": fork_tag,
-            "customization": "buglogin-fork-release",
+            "customization": "buglogin-custom-repackage",
+            "changes": [
+              "renamed archive members from ungoogled-chromium to bugium",
+              "added bugium.exe alias for chrome.exe",
+              "excluded installer executables to avoid upstream installer branding",
+            ],
           }
 
-          for asset in src_dir.iterdir():
+          release_note = (
+            "This package is customized for BugLogin as Bugium.\n"
+            "Launcher: use bugium.exe (alias of chrome.exe).\n"
+            "Profile title native patch requires source-build stage and is not provided by repack-only flow.\n"
+          )
+
+          for asset in sorted(src_dir.iterdir()):
             if not asset.is_file():
+              continue
+            if asset.suffix.lower() != ".zip":
+              # Skip installer binaries from upstream because installer UI/version-info
+              # branding remains upstream and causes inconsistent user-facing identity.
+              print(f"Skip non-zip asset: {asset.name}")
               continue
             out_name = rename_asset(asset.name)
             out_path = out_dir / out_name
-            if asset.suffix.lower() == ".zip":
-              with tempfile.TemporaryDirectory() as tmp:
-                tmp_path = pathlib.Path(tmp)
-                with zipfile.ZipFile(asset, "r") as zf:
-                  zf.extractall(tmp_path)
-                marker_path = tmp_path / "BUGLOGIN_FORK_METADATA.json"
-                marker_path.write_text(json.dumps(marker, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                  for item in tmp_path.rglob("*"):
-                    if item.is_file():
-                      zf.write(item, item.relative_to(tmp_path))
-            else:
-              shutil.copy2(asset, out_path)
+            with zipfile.ZipFile(asset, "r") as zin, zipfile.ZipFile(
+              out_path, "w", compression=zipfile.ZIP_DEFLATED
+            ) as zout:
+              seen = set()
+              top_roots = set()
+              for info in zin.infolist():
+                if info.is_dir():
+                  continue
+                original_name = info.filename
+                normalized = normalize_member_name(original_name)
+                top = normalized.split("/", 1)[0]
+                top_roots.add(top)
+                data = zin.read(info)
+                zout.writestr(normalized, data)
+                seen.add(normalized)
+
+                # Add bugium.exe alias for easier integration with BugLogin runtime.
+                if normalized.lower().endswith("/chrome.exe"):
+                  alias = normalized[:-len("chrome.exe")] + "bugium.exe"
+                  if alias not in seen:
+                    zout.writestr(alias, data)
+                    seen.add(alias)
+
+              for root in sorted(top_roots):
+                meta_path = f"{root}/BUGLOGIN_FORK_METADATA.json"
+                if meta_path not in seen:
+                  zout.writestr(meta_path, json.dumps(marker, ensure_ascii=False, indent=2) + "\n")
+                note_path = f"{root}/BUGLOGIN_BRANDING.txt"
+                if note_path not in seen:
+                  zout.writestr(note_path, release_note)
 
           print("Customized assets:")
           for item in sorted(out_dir.iterdir()):
@@ -156,7 +194,7 @@ jobs:
           TAG="${{ steps.tags.outputs.fork_tag }}"
           gh release create "${TAG}" \
             --title "${TAG}" \
-            --notes "BugLogin customized fork release from upstream ${{ steps.tags.outputs.upstream_tag }}."
+            --notes "BugLogin customized Bugium release (zip-only) from upstream ${{ steps.tags.outputs.upstream_tag }}."
           gh release upload "${TAG}" dist/*
 
       - name: Trigger manifest publish
